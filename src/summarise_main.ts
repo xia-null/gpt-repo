@@ -51,15 +51,18 @@ export const loadTemplate = (templateName: string): Handlebars.TemplateDelegate 
     return Handlebars.compile(templateContent);
 };
 
-export const getCachedResponseKey = (templatePath: string, templateContent: string, args: object): string => {
-    const templatePathHash: string = hashContent(templatePath);
-    const templateContentHash: string = hashContent(templateContent);
-    const argsHash: string = hashContent(JSON.stringify(args));
-    return `${templatePathHash}-${templateContentHash}-${argsHash}.response`;
+export const getCachedResponseKey = (templateContent: string, args: object, model: string): string => {
+    const hash: string = hashContent(JSON.stringify({
+        args,
+        model,
+        templateContent
+    }));
+
+    return `${hash}.response`;
 };
 
-export const getCachedResponse = (templatePath: string, templateContent: string, args: object): string | null => {
-    const responseFileName: string = getCachedResponseKey(templatePath, templateContent, args);
+export const getCachedResponse = (templateContent: string, args: object, model: string): string | null => {
+    const responseFileName: string = getCachedResponseKey(templateContent, args, model);
     const responseFilePath: string = path.join(dataDir, responseFileName);
 
     if (fs.existsSync(responseFilePath)) {
@@ -68,8 +71,8 @@ export const getCachedResponse = (templatePath: string, templateContent: string,
     return null;
 };
 
-export const cacheResponse = (templatePath: string, template: any, args: object, response: string): void => {
-    const responseFileName: string = getCachedResponseKey(templatePath, template.toString(), args);
+export const cacheResponse = (template: any, args: object, response: string, model: string): void => {
+    const responseFileName: string = getCachedResponseKey(template.toString(), args, model);
     const responseFilePath: string = path.join(dataDir, responseFileName);
     fs.writeFileSync(responseFilePath, response);
 
@@ -77,6 +80,20 @@ export const cacheResponse = (templatePath: string, template: any, args: object,
     const renderedTemplate: string = template(args);
     fs.writeFileSync(queryFilePath, renderedTemplate);
 };
+
+export const getResponse = async (template: any, args: object, model: string): Promise<string> => {
+    const cachedResponse: string | null = getCachedResponse(template.toString(), args, model);
+
+    if (cachedResponse) {
+        return cachedResponse;
+    }
+
+    const prompt: string = template(args);
+    signale.info(`Querying ${model}...`)
+    const response: string = await callOpenAiApi(prompt, model);
+    cacheResponse(template, args, response, model);
+    return response;
+}
 
 export const dataDir: string = `${__dirname}/../cache`;
 
@@ -93,18 +110,9 @@ export const processFiles = async (filePaths: string[]): Promise<void> => {
 
     for (const filePath of filePaths) {
         const fileContent: string = fs.readFileSync(filePath, 'utf-8');
-        const summaryPrompt: string = summariseTemplate({ filePath, fileContent });
-        const cachedSummary: string | null = getCachedResponse('summarise-file.hbs', summariseTemplate.toString(), { filePath, fileContent });
+        const summary = await getResponse(summariseTemplate, { filePath, fileContent }, 'gpt-4o-mini');
 
-        if (!cachedSummary) {
-            signale.info(`Generating summary for ${path.relative(process.cwd(), filePath)}`);
-            const summary: string = await callOpenAiApi(summaryPrompt, 'gpt-4o-mini');
-            summaries.push({ filePath, summary })
-            cacheResponse('summarise-file.hbs', summariseTemplate, { filePath, fileContent }, summary);
-        } else {
-            signale.info(`Loaded cached summary for ${path.relative(process.cwd(), filePath)}`);
-            summaries.push({ filePath, summary: cachedSummary })
-        }
+        summaries.push({ filePath, summary })
     }
 
     const chunks: any[] = []
@@ -123,38 +131,18 @@ export const processFiles = async (filePaths: string[]): Promise<void> => {
 
     chunks.push(currentChunk)
 
-    const metaSummaryPrompts: [any[], string][] = chunks.map((summaries) => [summaries, summariseSummariesTemplate({ summaries })]);
-    const metaSummaries = await PI.map(metaSummaryPrompts, async ([summaries, prompt]: [any[], string]): Promise<string> => {
-        const cachedMetaSummary: string | null = getCachedResponse('summarise-sumaries.hbs', summariseSummariesTemplate.toString(), { summaries });
-
-        if (!cachedMetaSummary) {
-            signale.info(`Generating meta summary...`);
-            const metaSummary: string = await callOpenAiApi(prompt, 'gpt-4o');
-            cacheResponse('summarise-summaries.hbs', summariseSummariesTemplate, { summaries }, metaSummary);
-            return metaSummary
-        } else {
-            signale.info('Using cached meta summary');
-            return cachedMetaSummary
-        }
-    })
+    const metaSummaries = await PI.mapSeries(chunks, async (summaries): Promise<string> => (
+        await getResponse(summariseSummariesTemplate, { summaries }, 'gpt-4o')
+    ))
 
     if (metaSummaries.length === 1) {
         fs.writeFileSync('./out.md', metaSummaries[0])
         return
     }
 
-    const metaMetaSummaryPrompt: string = summariseMetaSummariesTemplate({ metaSummaries })
-    const cachedMetaMetaSummary: string | null = getCachedResponse('summarise-meta-summaries.hbs', summariseMetaSummariesTemplate.toString(), { metaSummaries });
+    const metaMetaSummary = await getResponse(summariseMetaSummariesTemplate, { metaSummaries }, 'gpt-4o')
 
-    if (!cachedMetaMetaSummary) {
-        signale.info(`Generating meta-meta summary...`);
-        const metaMetaSummary: string = await callOpenAiApi(metaMetaSummaryPrompt, 'gpt-4o');
-        cacheResponse('summarise-meta-summaries.hbs', summariseMetaSummariesTemplate, { metaSummaries }, metaMetaSummary);
-        fs.writeFileSync('./out.md', metaMetaSummary)
-    } else {
-        signale.info('Using cached meta-meta-summary');
-        fs.writeFileSync('./out.md', cachedMetaMetaSummary)
-    }
+    fs.writeFileSync('./out.md', metaMetaSummary)
 };
 
 export const main = async (): Promise<void> => {
@@ -166,7 +154,7 @@ export const main = async (): Promise<void> => {
         const stat: fs.Stats = fs.statSync(fullPath);
 
         if (stat.isDirectory()) {
-            filePaths.push(...getFilePaths(fullPath, ['.ts', '.vue', '.json', '.yml', '.md', '.js', '.jsx', '.html']));
+            filePaths.push(...getFilePaths(fullPath, ['.ts', '.vue', '.json', '.yml', '.md', '.js', '.jsx', '.html', '.py']));
         } else {
             filePaths.push(fullPath);
         }
