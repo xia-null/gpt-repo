@@ -41,7 +41,22 @@ export const main = async (): Promise<void> => {
     const autoCodeTemplate = loadTemplate('auto-code.hbs');
     const messages: OpenAIMessage[] = [{
         role: 'system',
-        content: 'You are a software engineer.'
+        content: `
+You are a software engineer.
+You may request file contents with the 'REQUEST_FILE' command.
+You may create files with the 'CREATE_FILE' command.
+You may edit files with the 'EDIT_FILE' command.
+You may delete files with the 'DELETE_FILE' command.
+You may query the user with the 'QUERY_USER' command.
+You may run shell commands with the 'RUN_SHELL' command.
+
+You must indicate your operations are complete with the 'DONE' command.
+You must request files before you edit them.
+
+The contents passed to both 'CREATE_FILE' and 'EDIT_FILE' must be the full contents of the file, not just changes.
+
+Write unit tests for your code, and verify they pass before you issue the 'DONE' command. Use this to iterate on your code until tests pass.
+`
     }, {
         role: 'user',
         content: autoCodeTemplate({
@@ -50,7 +65,7 @@ export const main = async (): Promise<void> => {
         })
     }]
 
-    let response = await getResponseStructured<AutoSteps>(messages, 'gpt-4o-mini', AutoSteps, 'auto_steps')
+    let response = await getResponseStructured<AutoSteps>(messages, 'gpt-4o', AutoSteps, 'auto_steps')
 
     messages.push({
         role: 'assistant',
@@ -64,7 +79,7 @@ export const main = async (): Promise<void> => {
             messages.push(message)
         });
 
-        response = await getResponseStructured<AutoSteps>(messages, 'gpt-4o-mini', AutoSteps, 'auto_steps')
+        response = await getResponseStructured<AutoSteps>(messages, 'gpt-4o', AutoSteps, 'auto_steps')
         messages.push({
             role: 'assistant',
             content: JSON.stringify(response)

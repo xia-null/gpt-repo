@@ -11,6 +11,7 @@ import _chunk from 'lodash/chunk';
 import _sum from 'lodash/sum';
 import { z } from 'zod';
 import { zodResponseFormat } from 'openai/helpers/zod';
+const exec = require('child_process').exec;
 
 export const MAX_PROMPT_LENGTH = 30_000;
 
@@ -75,6 +76,11 @@ export const AutoStep = z.union([
         message: z.string(),
     }),
     z.object({
+        type: z.literal('RUN_SHELL'),
+        cwd: z.string(),
+        command: z.string(),
+    }),
+    z.object({
         type: z.literal('DONE'),
     }),
 ]);
@@ -125,6 +131,12 @@ export const handleAutoSteps = async (autoSteps: AutoSteps): Promise<OpenAIMessa
                 responses.push({
                     role: 'user',
                     content: await handleQueryUser(step.message)
+                });
+                break;
+            case 'RUN_SHELL':
+                responses.push({
+                    role: 'user',
+                    content: await handleQueryRunShell(step.cwd, step.command)
                 });
                 break;
             case 'DONE':
@@ -190,6 +202,26 @@ const handleQueryUser = async (message: string): Promise<string> => {
             resolve(data.toString().trim());
         });
     });
+};
+
+const handleQueryRunShell = async (cwd: string, command: string): Promise<string> => {
+    const confirmation = await handleQueryUser(`Do you want to run the command in ${cwd}?\n\n${command}\n\n(yes/no)`);
+    if (confirmation.toLowerCase() === 'yes') {
+        return new Promise((resolve) => {
+            exec(command, { cwd }, (error: any, stdout: string, stderr: string) => {
+                if (error) {
+                    signale.error(`Error executing command: ${error.message}`);
+                    resolve(error.message);
+                } else {
+                    signale.success(`Command executed successfully: ${command}`);
+                    resolve(stdout || stderr);
+                }
+            });
+        });
+    } else {
+        signale.info(`Command execution aborted: ${command}`);
+        process.exit(0);
+    }
 };
 
 export const loadTemplate = (templateName: string): Handlebars.TemplateDelegate => {
