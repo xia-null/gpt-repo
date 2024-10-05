@@ -8,12 +8,18 @@ importers:
 
   .:
     dependencies:
+      '@types/diff':
+        specifier: ^5.2.2
+        version: 5.2.2
       '@types/lodash':
         specifier: ^4.17.10
         version: 4.17.10
       axios:
         specifier: ^1.7.7
         version: 1.7.7
+      diff:
+        specifier: ^7.0.0
+        version: 7.0.0
       dotenv:
         specifier: ^16.4.5
         version: 16.4.5
@@ -25,7 +31,7 @@ importers:
         version: 4.17.21
       openai:
         specifier: ^4.67.1
-        version: 4.67.1
+        version: 4.67.1(zod@3.23.8)
       p-iteration:
         specifier: ^1.1.8
         version: 1.1.8
@@ -35,6 +41,9 @@ importers:
       tslib:
         specifier: ^2.7.0
         version: 2.7.0
+      zod:
+        specifier: ^3.23.8
+        version: 3.23.8
     devDependencies:
       '@commitlint/cli':
         specifier: ^19.5.0
@@ -1260,6 +1269,9 @@ packages:
   '@types/debug@4.1.12':
     resolution: {integrity: sha512-vIChWdVG3LG1SMxEvI/AK+FWJthlrqlTu7fbrlywTkkaONwk/UAGaULXRlf8vkzFBLVm0zkMdCquhL5aOjhXPQ==}
 
+  '@types/diff@5.2.2':
+    resolution: {integrity: sha512-qVqLpd49rmJA2nZzLVsmfS/aiiBpfVE95dHhPVwG0NmSBAt+riPxnj53wq2oBq5m4Q2RF1IWFEUpnZTgrQZfEQ==}
+
   '@types/eslint@9.6.1':
     resolution: {integrity: sha512-FXx2pKgId/WyYo2jXw63kk7/+TY7u7AziEJxJAnSFzHlqTAS3Ync6SvgYAN/k4/PQpnnVuzoMuVnByKK2qp0ag==}
 
@@ -2062,6 +2074,10 @@ packages:
 
   diff@4.0.2:
     resolution: {integrity: sha512-58lmxKSA4BNyLz+HHMUzlOEpg09FV+ev6ZMe3vJihgdxzgcwZ8VoEEPmALCZG9LmqfVoNMMKpttIYTVG6uDY7A==}
+    engines: {node: '>=0.3.1'}
+
+  diff@7.0.0:
+    resolution: {integrity: sha512-PJWHUb1RFevKCwaFA9RlG5tCd+FO5iRh9A8HEtkmBH2Li03iJriB6m6JIN4rGz3K3JLawI7/veA1xzRKP6ISBw==}
     engines: {node: '>=0.3.1'}
 
   dir-glob@3.0.1:
@@ -4657,6 +4673,9 @@ packages:
     resolution: {integrity: sha512-b4JR1PFR10y1mKjhHY9LaGo6tmrgjit7hxVIeAmyMw3jegXR4dhYqLaQF5zMXZxY7tLpMyJeLjr1C4rLmkVe8g==}
     engines: {node: '>=12.20'}
 
+  zod@3.23.8:
+    resolution: {integrity: sha512-XBx9AXhXktjUqnepgTiE5flcKIYWi/rme0Eaj+5Y0lftuGBq+jyRu/md4WnuxqgP1ubdpNCsYEYPxrzVHD8d6g==}
+
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
@@ -5940,6 +5959,8 @@ snapshots:
     dependencies:
       '@types/ms': 0.7.34
 
+  '@types/diff@5.2.2': {}
+
   '@types/eslint@9.6.1':
     dependencies:
       '@types/estree': 1.0.6
@@ -6877,6 +6898,8 @@ snapshots:
   diff-match-patch@1.0.5: {}
 
   diff@4.0.2: {}
+
+  diff@7.0.0: {}
 
   dir-glob@3.0.1:
     dependencies:
@@ -8714,7 +8737,7 @@ snapshots:
     dependencies:
       regex: 4.3.3
 
-  openai@4.67.1:
+  openai@4.67.1(zod@3.23.8):
     dependencies:
       '@types/node': 18.19.54
       '@types/node-fetch': 2.6.11
@@ -8723,6 +8746,8 @@ snapshots:
       form-data-encoder: 1.7.2
       formdata-node: 4.4.1
       node-fetch: 2.7.0
+    optionalDependencies:
+      zod: 3.23.8
     transitivePeerDependencies:
       - encoding
 
@@ -9908,5 +9933,7 @@ snapshots:
   yocto-queue@0.1.0: {}
 
   yocto-queue@1.1.1: {}
+
+  zod@3.23.8: {}
 
   zwitch@2.0.4: {}
