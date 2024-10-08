@@ -59,6 +59,10 @@ export const AutoStep = z.union([
         fileContents: z.string(),
     }),
     z.object({
+        type: z.literal('CREATE_DIR'),
+        dirPath: z.string(),
+    }),
+    z.object({
         type: z.literal('EDIT_FILE'),
         filePath: z.string(),
         fileContents: z.string(),
@@ -115,6 +119,9 @@ export const handleAutoSteps = async (autoSteps: AutoSteps): Promise<OpenAIMessa
             case 'CREATE_FILE':
                 await handleCreateFile(step.filePath, step.fileContents);
                 break;
+            case 'CREATE_DIR':
+                await handleCreateDir(step.dirPath);
+                break;
             case 'EDIT_FILE':
                 await handleEditFile(step.filePath, step.fileContents);
                 break;
@@ -151,37 +158,51 @@ export const handleAutoSteps = async (autoSteps: AutoSteps): Promise<OpenAIMessa
     return responses;
 };
 
-const handleCreateFile = async (filePath: string, fileContents: string): Promise<null> => {
+const handleCreateFile = async (filePath: string, fileContents: string): Promise<string> => {
     const confirmation = await handleQueryUser(`Do you want to create the file at ${filePath}?\n\n${fileContents}\n\n(yes/no)`);
     if (confirmation.toLowerCase() === 'yes') {
         fs.writeFileSync(filePath, fileContents);
         signale.success(`File created: ${filePath}`);
+        return JSON.stringify({ success: `File created: ${filePath}` });
     } else {
         signale.info(`File creation aborted: ${filePath}`);
+        return JSON.stringify({ error: `File creation aborted: ${filePath}` });
     }
-    return null;
 };
 
-const handleEditFile = async (filePath: string, fileContents: string): Promise<null> => {
+const handleCreateDir = async (dirPath: string): Promise<string> => {
+    const confirmation = await handleQueryUser(`Do you want to create the directory at ${dirPath}? (yes/no)`);
+    if (confirmation.toLowerCase() === 'yes') {
+        fs.mkdirSync(dirPath, { recursive: true });
+        signale.success(`Directory created: ${dirPath}`);
+        return JSON.stringify({ success: `Directory created: ${dirPath}` });
+    } else {
+        signale.info(`Directory creation aborted: ${dirPath}`);
+        return JSON.stringify({ error: `Directory creation aborted: ${dirPath}` });
+    }
+};
+
+const handleEditFile = async (filePath: string, fileContents: string): Promise<string> => {
     const confirmation = await handleQueryUser(`Do you want to edit the file at ${filePath}?\n\n${fileContents}\n\n(yes/no)`);
     if (confirmation.toLowerCase() === 'yes') {
         fs.writeFileSync(filePath, fileContents);
         signale.success(`File edited: ${filePath}`);
+        return JSON.stringify({ success: `File edited: ${filePath}` });
     } else {
-        signale.info(`File edit aborted: ${filePath}`);
+        return JSON.stringify({ error: `File edit aborted: ${filePath}` });
     }
-    return null;
 };
 
-const handleDeleteFile = async (filePath: string): Promise<null> => {
+const handleDeleteFile = async (filePath: string): Promise<string> => {
     const confirmation = await handleQueryUser(`Do you want to delete the file at ${filePath}? (yes/no)`);
     if (confirmation.toLowerCase() === 'yes') {
         fs.unlinkSync(filePath);
         signale.success(`File deleted: ${filePath}`);
+        return JSON.stringify({ success: `File deleted: ${filePath}` });
     } else {
         signale.info(`File deletion aborted: ${filePath}`);
+        return JSON.stringify({ error: `File deletion aborted: ${filePath}` });
     }
-    return null;
 };
 
 const handleRequestFile = async (filePath: string): Promise<string> => {
@@ -195,11 +216,10 @@ const handleRequestFile = async (filePath: string): Promise<string> => {
 };
 
 const handleQueryUser = async (message: string): Promise<string> => {
-    signale.info(`Query to user: ${message}`);
     return new Promise((resolve) => {
         process.stdout.write(`${message}\n> `);
         process.stdin.once('data', (data) => {
-            resolve(data.toString().trim());
+            resolve(JSON.stringify({ userQuery: message, userResponse: data.toString().trim() }));
         });
     });
 };
@@ -211,16 +231,19 @@ const handleQueryRunShell = async (cwd: string, command: string): Promise<string
             exec(command, { cwd }, (error: any, stdout: string, stderr: string) => {
                 if (error) {
                     signale.error(`Error executing command: ${error.message}`);
-                    resolve(error.message);
+                    resolve(JSON.stringify({
+                        errorMessage: error.message,
+                        errorStack: error.stack
+                    }));
                 } else {
                     signale.success(`Command executed successfully: ${command}`);
-                    resolve(stdout || stderr);
+                    resolve(JSON.stringify({ stdout, stderr }));
                 }
             });
         });
     } else {
         signale.info(`Command execution aborted: ${command}`);
-        process.exit(0);
+        return JSON.stringify({ error: `Command execution aborted: ${command}` });
     }
 };
 
