@@ -3,6 +3,10 @@
   "version": "0.0.1",
   "private": true,
   "description": "TODO",
+  "bin": {
+    "gpt-repo-summarise": "./dist/summarise_main.js",
+    "gpt-repo-auto": "./dist/auto_main.js"
+  },
   "keywords": [
     "typescript",
     "template",
