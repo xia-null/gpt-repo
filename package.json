@@ -29,9 +29,10 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "pnpm build:ts && pnpm build:docs",
+    "build": "pnpm build:ts && pnpm build:docs && pnpm build:templates",
     "build:docs": "typedoc --out ./docs ./src && cp LICENSE.md docs/LICENSE.md && cp CHANGELOG.md docs/CHANGELOG.md",
     "build:ts": "NODE_PATH=./src tsc -p tsconfig.json",
+    "build:templates": "rm -rf dist/prompt_templates && cp -r src/prompt_templates dist/prompt_templates",
     "format": "pnpm format:prettier && pnpm format:yaml",
     "format:check": "pnpm format:prettier:check && pnpm format:yaml:check",
     "format:prettier": "prettier --write .",
