@@ -39,10 +39,18 @@ export const client: OpenAI = new OpenAI({
 });
 
 export const callOpenAiApi = async (prompt: string, model: string = 'gpt-4o'): Promise<string> => {
+    const startTime = Date.now();
     const completion: OpenAI.Chat.Completions.ChatCompletion = await client.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
         model
     });
+    const endTime = Date.now();
+    const duration = (endTime - startTime) / 1000; // duration in seconds
+
+    const tokensUsed = completion.usage?.total_tokens ?? 0;
+    const cost = (tokensUsed / 1_000_000) * 0.006; // $0.006 per token
+
+    signale.info(`Completion cost: $${cost.toFixed(6)} for ${tokensUsed} tokens in ${duration.toFixed(2)} seconds`);
 
     return completion.choices[0].message.content ?? '';
 };
@@ -219,7 +227,7 @@ const handleQueryUser = async (message: string): Promise<string> => {
     return new Promise((resolve) => {
         process.stdout.write(`${message}\n> `);
         process.stdin.once('data', (data) => {
-            resolve(JSON.stringify({ userQuery: message, userResponse: data.toString().trim() }));
+            resolve(data.toString().trim());
         });
     });
 };
@@ -269,8 +277,10 @@ export const getCachedResponse = (templateContent: string, args: object, model: 
     const responseFilePath: string = path.join(dataDir, responseFileName);
 
     if (fs.existsSync(responseFilePath)) {
+        signale.info(`read ${responseFilePath}`);
         return fs.readFileSync(responseFilePath, 'utf-8');
     }
+
     return null;
 };
 
@@ -278,10 +288,12 @@ export const cacheResponse = (template: any, args: object, response: string, mod
     const responseFileName: string = getCachedResponseKey(template.toString(), args, model, messages);
     const responseFilePath: string = path.join(dataDir, responseFileName);
     fs.writeFileSync(responseFilePath, response);
+    signale.info(`wrote ${responseFilePath}`);
 
     const queryFilePath: string = responseFilePath.replace('.response', '.query');
     const renderedTemplate: string = template(args);
     fs.writeFileSync(queryFilePath, renderedTemplate);
+    signale.info(`wrote ${queryFilePath}`);
 };
 
 export const getResponse = async (template: any, args: object, model: string): Promise<string> => {
