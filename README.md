@@ -1,7 +1,6 @@
 # GPT-Repo - 🛠️ CLI Codebase Explainer & Coding Agent
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
-[![Node.js CI](https://github.com/f3rno64/gpt-repo/actions/workflows/node.js.yml/badge.svg)](https://github.com/f3rno64/gpt-repo/actions)
 [![npm version](https://img.shields.io/npm/v/gpt-repo)](https://www.npmjs.com/package/gpt-repo)
 [![Downloads](https://img.shields.io/npm/dm/gpt-repo.svg)](https://www.npmjs.com/package/gpt-repo)
 
