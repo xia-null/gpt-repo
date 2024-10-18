@@ -29,7 +29,7 @@
     "optimize-regex",
     "@typescript-eslint",
     "write-good-comments",
-    "eslint-plugin-tsdoc",
+    "eslint-plugin-tsdoc"
   ],
   "extends": [
     "eslint:recommended",
