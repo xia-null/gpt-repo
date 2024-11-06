@@ -1,0 +1,19 @@
+These source files are your inputs:
+
+{{#each inputFiles}}
+``` {{this.filePath}}
+{{this.fileContent}}
+```
+{{/each}}
+
+These source files are your outputs:
+
+{{#each outputFiles}}
+* {{this}}
+{{/each}}
+
+Perform the following operation [{{type}}]:
+
+```
+{{prompt}}
+```

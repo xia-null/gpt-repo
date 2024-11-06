@@ -1,0 +1,27 @@
+Convert the following code operation result into a sequence of structured actions to
+be performed on the file system.
+
+
+The code operation was of type {{type}}. It operated on the following files:
+
+{{#each files}}
+- {{this.filePath}}
+{{/each}}
+
+These are the paths to known source files:
+
+{{#each referenceFilePaths}}
+- {{this}}
+{{/each}}
+
+This was the code operation prompt:
+
+```
+{{prompt}}
+```
+
+This is the result of the code operation:
+
+```
+{{result}}
+```

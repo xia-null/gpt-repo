@@ -3,15 +3,19 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import OpenAI from 'openai';
+import { OpenAI, AzureOpenAI } from 'openai';
 import PI from 'p-iteration';
 import Handlebars from 'handlebars';
-import signale from 'signale';
+// import signale from 'signale';
 import _chunk from 'lodash/chunk';
 import _sum from 'lodash/sum';
 import { z } from 'zod';
 import { zodResponseFormat } from 'openai/helpers/zod';
+import { FileOperationType, UI } from './ui'
+import { convert } from 'html-to-text'
+
 const exec = require('child_process').exec;
+const https = require('https');
 
 export const MAX_PROMPT_LENGTH = 30_000;
 
@@ -34,23 +38,26 @@ export const getFilePaths = (dir: string, extensions: string[]): string[] => {
     return results;
 };
 
-export const client: OpenAI = new OpenAI({
-    apiKey: process.env['OPENAI_API_KEY'], // This is the default and can be omitted
-});
+export const client: AzureOpenAI = new AzureOpenAI();
+export const openaiClient: OpenAI = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY
+})
 
 export const callOpenAiApi = async (prompt: string, model: string = 'gpt-4o'): Promise<string> => {
-    const startTime = Date.now();
-    const completion: OpenAI.Chat.Completions.ChatCompletion = await client.chat.completions.create({
+    const c = model.includes('o1') ? client : openaiClient
+
+    // const startTime = Date.now();
+    const completion: OpenAI.Chat.Completions.ChatCompletion = await c.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
         model
     });
-    const endTime = Date.now();
-    const duration = (endTime - startTime) / 1000; // duration in seconds
+    // const endTime = Date.now();
+    // const duration = (endTime - startTime) / 1000; // duration in seconds
 
-    const tokensUsed = completion.usage?.total_tokens ?? 0;
-    const cost = (tokensUsed / 1_000_000) * 0.006; // $0.006 per token
+    // const tokensUsed = completion.usage?.total_tokens ?? 0;
+    // const cost = (tokensUsed / 1_000_000) * 0.006; // $0.006 per token
 
-    signale.info(`Completion cost: $${cost.toFixed(6)} for ${tokensUsed} tokens in ${duration.toFixed(2)} seconds`);
+    // ui.log(`Completion cost: $${cost.toFixed(6)} for ${tokensUsed} tokens in ${duration.toFixed(2)} seconds`);
 
     return completion.choices[0].message.content ?? '';
 };
@@ -60,7 +67,7 @@ export interface OpenAIMessage {
     content: string
 }
 
-export const AutoStep = z.union([
+export const FsStep = z.union([
     z.object({
         type: z.literal('CREATE_FILE'),
         filePath: z.string(),
@@ -78,7 +85,17 @@ export const AutoStep = z.union([
     z.object({
         type: z.literal('DELETE_FILE'),
         filePath: z.string(),
-    }),
+    })
+])
+
+export type FsStep = z.infer<typeof FsStep>
+export const FsSteps = z.object({
+    steps: z.array(FsStep),
+})
+
+export type FsSteps = z.infer<typeof FsSteps>
+
+export const AutoStep = z.union([
     z.object({
         type: z.literal('REQUEST_FILE'),
         filePath: z.string(),
@@ -93,9 +110,23 @@ export const AutoStep = z.union([
         command: z.string(),
     }),
     z.object({
+        type: z.literal('GOOGLE_SEARCH'),
+        query: z.string(),
+    }),
+    z.object({
+        type: z.literal('HTTP_REQUEST_GET'),
+        url: z.string(),
+    }),
+    z.object({
+        type: z.literal('CODE_OPERATION'),
+        relatedFiles: z.array(z.string()),
+        outputFiles: z.array(z.string()),
+        prompt: z.string(),
+    }),
+    z.object({
         type: z.literal('DONE'),
     }),
-]);
+])
 
 export type AutoStep = z.infer<typeof AutoStep>;
 export const AutoSteps = z.object({
@@ -110,7 +141,7 @@ export const callOpenAiApiStructured = async <T>(
     responseType: any,
     responseTypeName: string
 ): Promise<T> => {
-    const completion = await client.beta.chat.completions.parse({
+    const completion = await openaiClient.beta.chat.completions.parse({
         model,
         messages,
         response_format: zodResponseFormat(responseType, responseTypeName),
@@ -119,103 +150,158 @@ export const callOpenAiApiStructured = async <T>(
     return completion.choices[0].message.parsed ?? '';
 };
 
-export const handleAutoSteps = async (autoSteps: AutoSteps): Promise<OpenAIMessage[]> => {
+export const handleFsSteps = async (ui: UI, fsSteps: FsSteps): Promise<OpenAIMessage[]> => {
     const responses: OpenAIMessage[] = [];
 
-    for (const step of autoSteps.steps) {
+    for (const step of fsSteps.steps) {
         switch (step.type) {
             case 'CREATE_FILE':
-                await handleCreateFile(step.filePath, step.fileContents);
+                await handleCreateFile(ui, step.filePath, step.fileContents);
+                responses.push({ role: 'user', content: `File created: ${step.filePath}` })
                 break;
             case 'CREATE_DIR':
-                await handleCreateDir(step.dirPath);
+                await handleCreateDir(ui, step.dirPath);
+                responses.push({ role: 'user', content: `Directory created: ${step.dirPath}` })
                 break;
             case 'EDIT_FILE':
-                await handleEditFile(step.filePath, step.fileContents);
+                await handleEditFile(ui, step.filePath, step.fileContents);
+                responses.push({ role: 'user', content: `File edited: ${step.filePath}` })
                 break;
             case 'DELETE_FILE':
-                await handleDeleteFile(step.filePath);
-                break;
-            case 'REQUEST_FILE':
-                responses.push({
-                    role: 'user',
-                    content: await handleRequestFile(step.filePath)
-                })
-                break;
-            case 'QUERY_USER':
-                responses.push({
-                    role: 'user',
-                    content: await handleQueryUser(step.message)
-                });
-                break;
-            case 'RUN_SHELL':
-                responses.push({
-                    role: 'user',
-                    content: await handleQueryRunShell(step.cwd, step.command)
-                });
-                break;
-            case 'DONE':
-                signale.success('All steps completed.');
-                process.exit(0);
+                await handleDeleteFile(ui, step.filePath);
+                responses.push({ role: 'user', content: `File deleted: ${step.filePath}` })
                 break;
             default:
-                signale.warn(`Unknown step type: ${(step as any).type}`);
+                throw new Error(`Unknown step type: ${(step as any).type}`);
         }
     }
 
     return responses;
 };
 
-const handleCreateFile = async (filePath: string, fileContents: string): Promise<string> => {
-    const confirmation = await handleQueryUser(`Do you want to create the file at ${filePath}?\n\n${fileContents}\n\n(yes/no)`);
-    if (confirmation.toLowerCase() === 'yes') {
+export const handleAutoSteps = async (ui: UI, filePaths: string[], autoSteps: AutoSteps): Promise<OpenAIMessage[]> => {
+    const responses: OpenAIMessage[] = [];
+
+    for (const step of autoSteps.steps) {
+        switch (step.type) {
+            case 'REQUEST_FILE':
+                responses.push({
+                    role: 'user',
+                    content: await handleRequestFile(ui, step.filePath)
+                })
+                break;
+            case 'QUERY_USER':
+                responses.push({
+                    role: 'user',
+                    content: await handleQueryUser(ui, step.message)
+                });
+                break;
+            case 'RUN_SHELL':
+                responses.push({
+                    role: 'user',
+                    content: await handleQueryRunShell(ui, step.cwd, step.command)
+                });
+                break;
+            case 'HTTP_REQUEST_GET':
+                responses.push({
+                    role: 'user',
+                    content: await handleHttpRequestGet(ui, step.url)
+                });
+                break;
+            case 'GOOGLE_SEARCH':
+                responses.push({
+                    role: 'user',
+                    content: await handleGoogleSearch(ui, step.query)
+                });
+                break;
+            case 'CODE_OPERATION':
+                const { type, relatedFiles, outputFiles, prompt } = step;
+                const messages = await handleCodeOperation(ui, type, filePaths, relatedFiles, outputFiles, prompt)
+
+                messages.forEach(msg => responses.push(msg))
+                break;
+            case 'DONE':
+                ui.log('All steps completed.');
+                break;
+            default:
+                throw new Error(`Unknown step type: ${(step as any).type}`);
+        }
+    }
+
+    return responses;
+};
+
+const handleCreateFile = async (ui: UI, filePath: string, fileContents: string): Promise<string> => {
+    ui.setFileOperation(FileOperationType.Create, path.basename(filePath), fileContents)
+
+    const confirmation = ui.getYesToAll()
+        ? true
+        : await ui.askUser('Confirm Auto Step', `Create the file at ${filePath}?`);
+
+    ui.closeFileOperation()
+
+    if (confirmation) {
         fs.writeFileSync(filePath, fileContents);
-        signale.success(`File created: ${filePath}`);
+        ui.log(`File created: ${filePath}`);
         return JSON.stringify({ success: `File created: ${filePath}` });
     } else {
-        signale.info(`File creation aborted: ${filePath}`);
+        ui.log(`File creation aborted: ${filePath}`);
         return JSON.stringify({ error: `File creation aborted: ${filePath}` });
     }
 };
 
-const handleCreateDir = async (dirPath: string): Promise<string> => {
-    const confirmation = await handleQueryUser(`Do you want to create the directory at ${dirPath}? (yes/no)`);
-    if (confirmation.toLowerCase() === 'yes') {
+const handleCreateDir = async (ui: UI, dirPath: string): Promise<string> => {
+    const confirmation = ui.getYesToAll()
+        ? true
+        : await ui.askUser('Confirm Auto Step', `Do you want to create the directory at ${dirPath}?`);
+
+    if (confirmation) {
         fs.mkdirSync(dirPath, { recursive: true });
-        signale.success(`Directory created: ${dirPath}`);
+        ui.log(`Directory created: ${dirPath}`);
         return JSON.stringify({ success: `Directory created: ${dirPath}` });
     } else {
-        signale.info(`Directory creation aborted: ${dirPath}`);
+        ui.log(`Directory creation aborted: ${dirPath}`);
         return JSON.stringify({ error: `Directory creation aborted: ${dirPath}` });
     }
 };
 
-const handleEditFile = async (filePath: string, fileContents: string): Promise<string> => {
-    const confirmation = await handleQueryUser(`Do you want to edit the file at ${filePath}?\n\n${fileContents}\n\n(yes/no)`);
-    if (confirmation.toLowerCase() === 'yes') {
+const handleEditFile = async (ui: UI, filePath: string, fileContents: string): Promise<string> => {
+    ui.setFileOperation(FileOperationType.Edit, path.basename(filePath), fileContents)
+
+    const confirmation = ui.getYesToAll()
+        ? true
+        : await ui.askUser('Confirm Auto Step', `Do you want to edit the file at ${filePath}?`);
+
+    ui.closeFileOperation()
+
+    if (confirmation) {
         fs.writeFileSync(filePath, fileContents);
-        signale.success(`File edited: ${filePath}`);
+        ui.log(`File edited: ${filePath}`);
         return JSON.stringify({ success: `File edited: ${filePath}` });
     } else {
         return JSON.stringify({ error: `File edit aborted: ${filePath}` });
     }
 };
 
-const handleDeleteFile = async (filePath: string): Promise<string> => {
-    const confirmation = await handleQueryUser(`Do you want to delete the file at ${filePath}? (yes/no)`);
-    if (confirmation.toLowerCase() === 'yes') {
+const handleDeleteFile = async (ui: UI, filePath: string): Promise<string> => {
+    const confirmation = ui.getYesToAll()
+        ? true
+        : await ui.askUser('Confirm Auto Step', `Do you want to delete the file at ${filePath}?`);
+
+    if (confirmation) {
         fs.unlinkSync(filePath);
-        signale.success(`File deleted: ${filePath}`);
+        ui.log(`File deleted: ${filePath}`);
         return JSON.stringify({ success: `File deleted: ${filePath}` });
     } else {
-        signale.info(`File deletion aborted: ${filePath}`);
+        ui.log(`File deletion aborted: ${filePath}`);
         return JSON.stringify({ error: `File deletion aborted: ${filePath}` });
     }
 };
 
-const handleRequestFile = async (filePath: string): Promise<string> => {
+const handleRequestFile = async (ui: UI, filePath: string): Promise<string> => {
     const fileContent = fs.readFileSync(filePath, 'utf-8');
-    signale.info(`File requested: ${filePath}\nContent:\n${fileContent}`);
+
+    ui.log(`File requested: ${filePath}`);
 
     return JSON.stringify({
         filePath,
@@ -223,37 +309,127 @@ const handleRequestFile = async (filePath: string): Promise<string> => {
     })
 };
 
-const handleQueryUser = async (message: string): Promise<string> => {
-    return new Promise((resolve) => {
-        process.stdout.write(`${message}\n> `);
-        process.stdin.once('data', (data) => {
-            resolve(data.toString().trim());
-        });
-    });
+const handleQueryUser = async (ui: UI, message: string): Promise<string> => {
+    return (await ui.promptUser('Auto Prompt', message)) ?? ''
 };
 
-const handleQueryRunShell = async (cwd: string, command: string): Promise<string> => {
-    const confirmation = await handleQueryUser(`Do you want to run the command in ${cwd}?\n\n${command}\n\n(yes/no)`);
-    if (confirmation.toLowerCase() === 'yes') {
+const handleQueryRunShell = async (ui: UI, cwd: string, command: string): Promise<string> => {
+    const confirmation = ui.getYesToAll()
+        ? true
+        : await ui.askUser('Confirm Auto Step', `Do you want to run the command in ${cwd}?\n\n${command}\n\n(yes/no)`);
+
+    if (confirmation) {
         return new Promise((resolve) => {
             exec(command, { cwd }, (error: any, stdout: string, stderr: string) => {
                 if (error) {
-                    signale.error(`Error executing command: ${error.message}`);
+                    ui.log(`Error executing command: ${error.message}`);
                     resolve(JSON.stringify({
                         errorMessage: error.message,
                         errorStack: error.stack
                     }));
                 } else {
-                    signale.success(`Command executed successfully: ${command}`);
+                    ui.log(`Command executed successfully: ${command}`);
                     resolve(JSON.stringify({ stdout, stderr }));
                 }
             });
         });
     } else {
-        signale.info(`Command execution aborted: ${command}`);
+        ui.log(`Command execution aborted: ${command}`);
         return JSON.stringify({ error: `Command execution aborted: ${command}` });
     }
 };
+
+const handleHttpRequestGet = async (ui: UI, url: string): Promise<string> => {
+    const confirmation = ui.getYesToAll()
+        ? true
+        : await ui.askUser('Confirm Auto Step', `Do you want to make an HTTP GET request to ${url}?`);
+
+    if (confirmation) {
+        return new Promise((resolve, reject) => {
+
+            https.get(url, (res: any) => {
+                let data = '';
+
+                res.on('data', (chunk: string) => {
+                    data += chunk;
+                });
+
+                res.on('end', () => {
+                    ui.log(`HTTP GET request to ${url} completed successfully.`);
+                    resolve(convert(data))
+                });
+            }).on('error', (err: any) => {
+                ui.log(`Error making HTTP GET request: ${err.message}`);
+                reject(JSON.stringify({ errorMessage: err.message, errorStack: err.stack }));
+            });
+        });
+    } else {
+        ui.log(`HTTP GET request aborted: ${url}`);
+        return JSON.stringify({ error: `HTTP GET request aborted: ${url}` });
+    }
+};
+
+const handleGoogleSearch = async (ui: UI, query: string): Promise<string> => {
+    const url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+    return handleHttpRequestGet(ui, url);
+};
+
+const handleCodeOperation = async (ui: UI, type: string, referenceFilePaths: string[], inputFilePaths: string[], outputFilePaths: string[], prompt: string): Promise<OpenAIMessage[]> => {
+    ui.log(`Code operation ${type} on input files:\n${inputFilePaths.map(fn => path.basename(fn)).join(', ')} and output files:\n${outputFilePaths.map(fn => path.basename(fn)).join(', ')}`)
+
+    const inputFiles = await Promise.all(inputFilePaths.map(async (filePath: string) => {
+        try {
+            const fileContent = fs.readFileSync(filePath, 'utf-8');
+            return { filePath, fileContent }
+        } catch (err: any) {
+            return { filePath, fileContent: ''}
+        }
+    }))
+
+    const codeOperationTemplate = loadTemplate('code-operation.hbs')
+    const codeOperationToFsStepsTemplate = loadTemplate('code-operation-to-fs-steps.hbs')
+
+    const codeOperationPrompt = codeOperationTemplate({ inputFiles, outputFiles: outputFilePaths, prompt, type })
+
+    ui.log('Querying o1-preview with code operation...')
+
+    const result = await callOpenAiApi(codeOperationPrompt, 'o1-preview')
+
+    const codeOperationToFsStepsPrompt = codeOperationToFsStepsTemplate({
+        type,
+        referenceFilePaths,
+        inputFiles,
+        prompt,
+        result
+    })
+
+    const messages: OpenAIMessage[] = [{
+        role: 'system',
+        content: `
+You translate code operations written by other models into structured filesystem modification steps.
+
+You may create files with the 'CREATE_FILE' command.
+You may edit files with the 'EDIT_FILE' command.
+You may delete files with the 'DELETE_FILE' command.
+You may create directories with the 'CREATE_DIR' command.
+The contents passed to both 'CREATE_FILE' and 'EDIT_FILE' must be the full contents of the file, not just changes.
+`
+    }, {
+        role: 'user',
+        content: codeOperationToFsStepsPrompt
+    }]
+
+    ui.log('Querying gpt-4o with results to generate fs steps...')
+
+    const fsSteps: FsSteps = await callOpenAiApiStructured<FsSteps>(messages, 'gpt-4o', FsSteps, 'fs_steps')
+
+    const fsStepMessages = await handleFsSteps(ui, fsSteps)
+
+    return [{
+        role: 'user',
+        content: `Code operation ${type} completed on input files: ${inputFiles.join(', ')} with prompt \`${prompt}\``
+    }, ...fsStepMessages]
+}
 
 export const loadTemplate = (templateName: string): Handlebars.TemplateDelegate => {
     const templatePath: string = path.join(__dirname, 'prompt_templates', templateName);
@@ -277,7 +453,6 @@ export const getCachedResponse = (templateContent: string, args: object, model: 
     const responseFilePath: string = path.join(dataDir, responseFileName);
 
     if (fs.existsSync(responseFilePath)) {
-        signale.info(`read ${responseFilePath}`);
         return fs.readFileSync(responseFilePath, 'utf-8');
     }
 
@@ -288,12 +463,10 @@ export const cacheResponse = (template: any, args: object, response: string, mod
     const responseFileName: string = getCachedResponseKey(template.toString(), args, model, messages);
     const responseFilePath: string = path.join(dataDir, responseFileName);
     fs.writeFileSync(responseFilePath, response);
-    signale.info(`wrote ${responseFilePath}`);
 
     const queryFilePath: string = responseFilePath.replace('.response', '.query');
     const renderedTemplate: string = template(args);
     fs.writeFileSync(queryFilePath, renderedTemplate);
-    signale.info(`wrote ${queryFilePath}`);
 };
 
 export const getResponse = async (template: any, args: object, model: string): Promise<string> => {
@@ -304,7 +477,6 @@ export const getResponse = async (template: any, args: object, model: string): P
     }
 
     const prompt: string = template(args);
-    signale.info(`Querying ${model}...`)
     const response: string = await callOpenAiApi(prompt, model);
     cacheResponse(template, args, response, model);
     return response;
@@ -316,8 +488,6 @@ export const getResponseStructured = async <T>(
     responseType: any,
     responseTypeName: string
 ): Promise<T> => {
-    signale.info(`Querying ${model}...`)
-
     const response: T = await callOpenAiApiStructured<T>(
         messages,
         model,
@@ -333,7 +503,6 @@ export const dataDir: string = `${__dirname}/../cache`;
 export const summariseDeep = async (filePaths: string[], outPath: string): Promise<void> => {
     if (!fs.existsSync(dataDir)) {
         fs.mkdirSync(dataDir);
-        signale.info(`Created cache directory at ${dataDir}`);
     }
 
     const summariseTemplate: Handlebars.TemplateDelegate = loadTemplate('summarise-file.hbs');
