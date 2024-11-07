@@ -54,9 +54,7 @@ export const main = async (): Promise<void> => {
 
   ui.log(`Operating on ${filePaths.length} files`)
 
-  const messagesJSONPath = args.includes('--messages')
-    ? args[args.indexOf('--messages') + 1] ?? ''
-    : path.join(process.cwd(), `gpt-repo-auto-${Date.now()}.json`)
+  const messagesJSONPath = path.join(process.cwd(), `gpt-repo-auto-${Date.now()}.json`)
 
   ui.log(`Saving messages to ${messagesJSONPath}`)
 
@@ -67,45 +65,43 @@ export const main = async (): Promise<void> => {
   })
 
   const autoCodeTemplate = loadTemplate('auto-code.hbs')
-  const messages: OpenAIMessage[] = args.includes('--messages')
-    ? JSON.parse(await fs.promises.readFile(args[args.indexOf('--messages') + 2], 'utf-8'))
-    : [
-      {
-        role: 'system',
-        content: `
-  You are a software engineer.
-  You may request file contents with the 'REQUEST_FILE' command.
-  You may query the user with the 'QUERY_USER' command.
-  You may run shell commands with the 'RUN_SHELL' command.
-  You may google searches with the 'GOOGLE_SEARCH' command.
-  You may make HTTP GET requests with the 'HTTP_REQUEST_GET' command.
-  You may perform an operation on source files, such as editing, creating, or deleting a file, with the 'CODE_OPERATION' command.
+  const messages: OpenAIMessage[] = [
+    {
+      role: 'system',
+      content: `
+You are a software engineer.
+You may request file contents with the 'REQUEST_FILE' command.
+You may query the user with the 'QUERY_USER' command.
+You may run shell commands with the 'RUN_SHELL' command.
+You may google searches with the 'GOOGLE_SEARCH' command.
+You may make HTTP GET requests with the 'HTTP_REQUEST_GET' command.
+You may perform an operation on source files, such as editing, creating, or deleting a file, with the 'CODE_OPERATION' command.
 
-  Use the HTTP_REQUEST_GET command on the links returned in GOOGLE_SEARCH results to read them.
+Use the HTTP_REQUEST_GET command on the links returned in GOOGLE_SEARCH results to read them.
 
-  You must indicate your operations are complete with the 'DONE' command.
-  You must request files before you edit them.
+You must indicate your operations are complete with the 'DONE' command.
+You must request files before you edit them.
 
-  The contents passed to both 'CREATE_FILE' and 'EDIT_FILE' must be the full contents of the file, not just changes.
+The contents passed to both 'CREATE_FILE' and 'EDIT_FILE' must be the full contents of the file, not just changes.
 
-  Request files when you need to know the contents of them to perform your work.
-  Do not edit files without requesting them first.
-  To learn about existing files and directories, use the tree or ls shell command.
-  Create directories before operating on files in them if they do not already exist.
-  Request library sources if they are available, do not guess the contents of library interfaces.
-  When unsure about an interface, type, or function, ask the user for clarification.
+Request files when you need to know the contents of them to perform your work.
+Do not edit files without requesting them first.
+To learn about existing files and directories, use the tree or ls shell command.
+Create directories before operating on files in them if they do not already exist.
+Request library sources if they are available, do not guess the contents of library interfaces.
+When unsure about an interface, type, or function, ask the user for clarification.
 
-  Issue the 'DONE' command only when it is clear the user is finished with their operations. In all other cases, prompt for user input before proceeding.
-  `
-      },
-      {
-        role: 'user',
-        content: autoCodeTemplate({
-          filePaths,
-          instructions
-        })
-      }
-    ]
+Issue the 'DONE' command only when it is clear the user is finished with their operations. In all other cases, prompt for user input before proceeding.
+`
+    },
+    {
+      role: 'user',
+      content: autoCodeTemplate({
+        filePaths,
+        instructions
+      })
+    }
+  ]
 
   const saveMessages = async (): Promise<void> => {
     await fs.promises.writeFile(messagesJSONPath, JSON.stringify(messages))
