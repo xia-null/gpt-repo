@@ -320,7 +320,9 @@ const handleQueryRunShell = async (ui: UI, cwd: string, command: string): Promis
                     ui.log(`Error executing command: ${error.message}`);
                     resolve(JSON.stringify({
                         errorMessage: error.message,
-                        errorStack: error.stack
+                        errorStack: error.stack,
+                        stdout,
+                        stderr
                     }));
                 } else {
                     ui.log(`Command executed successfully: ${command}`);
