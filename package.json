@@ -1,6 +1,6 @@
 {
   "name": "gpt-repo",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "A powerful CLI tool that leverages OpenAI's GPT models to operate on code repositories.",
   "bin": {
     "gpt-repo-summarise": "./dist/summarise_main.js",
