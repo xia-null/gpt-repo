@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.6](https://github.com/f3rno64/node-ts-lib-template/compare/v0.0.5...v0.0.6) (2024-11-07)
+
+
+### Features
+
+* pass stdout and stderr from failed shell commands to model ([e649018](https://github.com/f3rno64/node-ts-lib-template/commit/e6490182cbf91ff1d5b85cd02df776e01f829921))
+
 ### [0.0.5](https://github.com/f3rno64/node-ts-lib-template/compare/v0.0.3...v0.0.5) (2024-11-07)
 
 
