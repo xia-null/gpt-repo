@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.5](https://github.com/f3rno64/node-ts-lib-template/compare/v0.0.3...v0.0.5) (2024-11-07)
+
+
+### Features
+
+* expand auto coder to use azure o1-preview for code operations ([7a0866e](https://github.com/f3rno64/node-ts-lib-template/commit/7a0866e42aff598b5e3c310cf0980ca9dfcc5e5e))
+
+### [0.0.4](https://github.com/f3rno64/node-ts-lib-template/compare/v0.0.3...v0.0.4) (2024-11-07)
+
+
+### Features
+
+* expand auto coder to use azure o1-preview for code operations ([7a0866e](https://github.com/f3rno64/node-ts-lib-template/commit/7a0866e42aff598b5e3c310cf0980ca9dfcc5e5e))
+
 ### 0.0.3 (2024-10-18)
 
 
