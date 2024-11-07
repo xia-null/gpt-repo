@@ -39,15 +39,10 @@ export const getFilePaths = (dir: string, extensions: string[]): string[] => {
 };
 
 export const client: AzureOpenAI = new AzureOpenAI();
-export const openaiClient: OpenAI = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY
-})
 
 export const callOpenAiApi = async (prompt: string, model: string = 'gpt-4o'): Promise<string> => {
-    const c = model.includes('o1') ? client : openaiClient
-
     // const startTime = Date.now();
-    const completion: OpenAI.Chat.Completions.ChatCompletion = await c.chat.completions.create({
+    const completion: OpenAI.Chat.Completions.ChatCompletion = await client.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
         model
     });
@@ -141,7 +136,7 @@ export const callOpenAiApiStructured = async <T>(
     responseType: any,
     responseTypeName: string
 ): Promise<T> => {
-    const completion = await openaiClient.beta.chat.completions.parse({
+    const completion = await client.beta.chat.completions.parse({
         model,
         messages,
         response_format: zodResponseFormat(responseType, responseTypeName),
@@ -427,7 +422,7 @@ The contents passed to both 'CREATE_FILE' and 'EDIT_FILE' must be the full conte
 
     return [{
         role: 'user',
-        content: `Code operation ${type} completed on input files: ${inputFiles.join(', ')} with prompt \`${prompt}\``
+        content: `Code operation ${type} completed on input files: ${inputFiles.map(({ filePath }) => filePath).join(', ')} with prompt \`${prompt}\``
     }, ...fsStepMessages]
 }
 
