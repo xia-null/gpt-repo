@@ -7,5 +7,3 @@
 tags
 todo
 tsconfig.tsbuildinfo
-/cache
-.env
