@@ -3,7 +3,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { OpenAI, AzureOpenAI } from 'openai';
+import { OpenAI } from 'openai';
 import PI from 'p-iteration';
 import Handlebars from 'handlebars';
 // import signale from 'signale';
@@ -38,7 +38,7 @@ export const getFilePaths = (dir: string, extensions: string[]): string[] => {
     return results;
 };
 
-export const client: AzureOpenAI = new AzureOpenAI();
+export const client: OpenAI = new OpenAI();
 
 export const callOpenAiApi = async (prompt: string, model: string = 'gpt-4o'): Promise<string> => {
     // const startTime = Date.now();
@@ -388,9 +388,9 @@ const handleCodeOperation = async (ui: UI, type: string, referenceFilePaths: str
 
     const codeOperationPrompt = codeOperationTemplate({ inputFiles, outputFiles: outputFilePaths, prompt, type })
 
-    ui.log('Querying o1-preview with code operation...')
+    ui.log('Querying gpt-4o-mini with code operation...')
 
-    const result = await callOpenAiApi(codeOperationPrompt, 'o1-preview')
+    const result = await callOpenAiApi(codeOperationPrompt, 'gpt-4o-mini')
 
     const codeOperationToFsStepsPrompt = codeOperationToFsStepsTemplate({
         type,
